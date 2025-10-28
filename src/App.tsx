@@ -13,10 +13,40 @@ import { User } from './types/User';
 
 export type Category = 'all' | 'active' | 'completed';
 
+const filterTodo = (
+  todosList: Todo[],
+  {
+    filterCategory,
+    filterQuery,
+  }: { filterCategory: Category; filterQuery: string },
+): Todo[] => {
+  let filteredTodo = [...todosList];
+
+  if (filterCategory === 'completed') {
+    filteredTodo = filteredTodo.filter(todo => todo.completed);
+  }
+
+  if (filterCategory === 'active') {
+    filteredTodo = filteredTodo.filter(todo => !todo.completed);
+  }
+
+  if (filterQuery) {
+    const normalizedQuery = filterQuery.toLowerCase().trim();
+
+    filteredTodo = filteredTodo.filter(todo =>
+      todo.title.toLowerCase().includes(normalizedQuery),
+    );
+  }
+
+  return filteredTodo;
+};
+
 export const App: React.FC = () => {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null);
+  const [errorMessageTodos, setErrorMessageTodos] = useState<string>('');
+  const [errorMessageUser, setErrorMessageUser] = useState<string>('');
 
   const [loaderTodo, setLoaderTodo] = useState(false);
   const [loaderUser, setLoaderUser] = useState(false);
@@ -27,13 +57,14 @@ export const App: React.FC = () => {
   useEffect(() => {
     async function loadTodos() {
       setLoaderTodo(true);
+      setErrorMessageTodos('');
 
       try {
         const todosFromServer = await getTodos();
 
         setTodos(todosFromServer);
       } catch (error) {
-        throw error;
+        setErrorMessageTodos('Failed to load todos');
       } finally {
         setLoaderTodo(false);
       }
@@ -43,51 +74,41 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    async function loadUser() {
-      if (selectedTodo) {
-        setLoaderUser(true);
-        try {
-          const userFromServer = await getUser(selectedTodo.userId);
+    let isCancelled = false;
 
+    async function loadUser() {
+      if (!selectedTodo) {
+        setUser(null);
+
+        return;
+      }
+
+      setLoaderUser(true);
+      setErrorMessageUser('');
+
+      try {
+        const userFromServer = await getUser(selectedTodo.userId);
+
+        if (!isCancelled) {
           setUser(userFromServer);
-        } catch (error) {
-          throw error;
-        } finally {
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          setErrorMessageUser('Failed to load user.');
+        }
+      } finally {
+        if (!isCancelled) {
           setLoaderUser(false);
         }
       }
     }
 
     loadUser();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [selectedTodo]);
-
-  const filterTodo = (
-    todosList: Todo[],
-    {
-      filterCategory,
-      filterQuery,
-    }: { filterCategory: Category; filterQuery: string },
-  ): Todo[] => {
-    let filteredTodo = [...todosList];
-
-    if (filterCategory === 'completed') {
-      filteredTodo = filteredTodo.filter(todo => todo.completed);
-    }
-
-    if (filterCategory === 'active') {
-      filteredTodo = filteredTodo.filter(todo => !todo.completed);
-    }
-
-    if (filterQuery) {
-      const normalizedQuery = filterQuery.toLowerCase().trim();
-
-      filteredTodo = filteredTodo.filter(todo =>
-        todo.title.toLowerCase().includes(normalizedQuery),
-      );
-    }
-
-    return filteredTodo;
-  };
 
   const visibleTodo = filterTodo(todos, {
     filterCategory: category,
@@ -118,6 +139,9 @@ export const App: React.FC = () => {
                 onSelect={setSelectedTodo}
               />
             </div>
+            {errorMessageTodos && (
+              <p className="has-text-danger">{errorMessageTodos}</p>
+            )}
           </div>
         </div>
       </div>
@@ -128,6 +152,9 @@ export const App: React.FC = () => {
           user={user}
           onModalClose={setSelectedTodo}
         />
+      )}
+      {errorMessageUser && (
+        <p className="has-text-danger">{errorMessageUser}</p>
       )}
     </>
   );
